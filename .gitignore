@@ -20,3 +20,21 @@ backend/reports/
 # OS files
 .DS_Store
 Thumbs.db
+# ExifTool
+backend/exiftool_files/
+backend/exiftool.exe
+
+# Test documents - personal files
+backend/test_image.jpg
+backend/gce_certificate.jpg
+backend/id_card.jpg
+backend/fake_document.pdf
+backend/authentic_result.pdf
+backend/Result_slip.pdf
+backend/transcript.pdf
+backend/forensic_report.pdf
+backend/test_scan.py
+
+# Generated reports and uploads
+backend/reports/
+backend/uploads/
