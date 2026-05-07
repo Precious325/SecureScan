@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPBearer
 from app.db.database import Base, engine
 from app.api import auth, scan, admin
 import os
@@ -8,9 +9,11 @@ import os
 # Create all database tables
 Base.metadata.create_all(bind=engine)
 
-# Create upload and report directories if they don't exist
+# Create upload and report directories
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("reports", exist_ok=True)
+
+security = HTTPBearer()
 
 app = FastAPI(
     title="SecureScan API",
@@ -27,8 +30,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files for heatmap images
+# Mount static files
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/reports", StaticFiles(directory="reports"), name="reports")
 
 # Register routers
 app.include_router(auth.router)
