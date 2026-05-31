@@ -4,6 +4,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer
 from app.db.database import Base, engine
 from app.api import auth, scan, admin
+from app.models import user, scan as scan_model
+from app.models.reset_request import ResetRequest
 import os
 
 # Create all database tables

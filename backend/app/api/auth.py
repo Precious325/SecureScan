@@ -61,7 +61,7 @@ def get_me(current_user: User = Depends(get_current_user)):
     return UserResponse.from_orm(current_user)
 
 
-# ── Forgot Password ───────────────────────────────────────────────────────────
+# ── Password Reset ────────────────────────────────────────────────────────────
 
 class ForgotPasswordRequest(BaseModel):
     email: str
@@ -74,68 +74,37 @@ class ResetPasswordRequest(BaseModel):
 
 @router.post("/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == request.email).first()
+    from app.models.reset_request import ResetRequest
+
+    user = db.query(User).filter(User.email == request.email.lower().strip()).first()
     if not user:
-        raise HTTPException(status_code=404, detail="No account found with this email address")
+        # Don't reveal if email exists or not for security
+        return {"message": "If this email is registered, your request has been submitted for admin review."}
 
-    # Generate 6-digit code
-    code = ''.join(random.choices(string.digits, k=6))
-    expires = datetime.utcnow() + timedelta(minutes=15)
+    # Check if there is already a pending request for this email
+    existing = db.query(ResetRequest).filter(
+        ResetRequest.email == request.email.lower().strip(),
+        ResetRequest.status == "pending"
+    ).first()
 
-    # Save code to database
-    user.reset_code = code
-    user.reset_code_expires = expires
+    if existing:
+        return {"message": "You already have a pending reset request. Please wait for the administrator to process it."}
+
+    # Create new reset request for admin to review
+    reset_req = ResetRequest(
+        email=user.email,
+        full_name=user.full_name,
+        status="pending"
+    )
+    db.add(reset_req)
     db.commit()
 
-    # Send email
-    try:
-        import smtplib
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "SecureScan — Password Reset Code"
-        msg["From"] = settings.MAIL_FROM
-        msg["To"] = user.email
-
-        html = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; background: #0f172a; color: #ffffff; padding: 40px;">
-            <div style="max-width: 500px; margin: 0 auto; background: #1e293b; border-radius: 16px; padding: 40px;">
-                <h1 style="color: #3b82f6; margin-bottom: 8px;">SecureScan</h1>
-                <p style="color: #94a3b8;">Forensic Document Verification System</p>
-                <hr style="border-color: #334155; margin: 24px 0;">
-                <h2 style="color: #ffffff;">Password Reset Code</h2>
-                <p style="color: #94a3b8;">Hello {user.full_name},</p>
-                <p style="color: #94a3b8;">You requested a password reset for your SecureScan account. Use the code below to reset your password:</p>
-                <div style="background: #0f172a; border-radius: 12px; padding: 24px; text-align: center; margin: 24px 0;">
-                    <p style="font-size: 48px; font-weight: bold; letter-spacing: 12px; color: #3b82f6; margin: 0;">{code}</p>
-                </div>
-                <p style="color: #94a3b8;">This code expires in <strong style="color: #ffffff;">15 minutes</strong>.</p>
-                <p style="color: #94a3b8;">If you did not request a password reset, please ignore this email.</p>
-                <hr style="border-color: #334155; margin: 24px 0;">
-                <p style="color: #475569; font-size: 12px;">University of Bamenda — College of Technology</p>
-            </div>
-        </body>
-        </html>
-        """
-
-        msg.attach(MIMEText(html, "html"))
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
-            server.sendmail(settings.MAIL_FROM, user.email, msg.as_string())
-
-    except Exception as e:
-        print(f"Email error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to send reset email. Please try again.")
-
-    return {"message": "Reset code sent to your email address"}
+    return {"message": "Your password reset request has been submitted. Please wait for the administrator to approve it. You will receive a reset code via email once approved."}
 
 
 @router.post("/reset-password")
 def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == request.email).first()
+    user = db.query(User).filter(User.email == request.email.lower().strip()).first()
     if not user:
         raise HTTPException(status_code=404, detail="No account found with this email address")
 
