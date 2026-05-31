@@ -23,7 +23,7 @@ export default function DashboardPage() {
       try {
         const [userRes, scansRes] = await Promise.all([getMe(), getScanHistory()]);
         setUser(userRes.data);
-        setScans(scansRes.data.slice(0, 5));
+        setScans(scansRes.data); // ← removed slice here so stats are accurate
       } catch (error) {
         toast.error('Session expired. Please login again.');
         router.push('/login');
@@ -53,11 +53,15 @@ export default function DashboardPage() {
     );
   }
 
+  // Stats based on ALL scans
   const totalScans = scans.length;
   const forgedCount = scans.filter(s =>
     s.risk_verdict === 'FORGED' || s.risk_verdict === 'LIKELY FORGED'
   ).length;
   const authenticCount = scans.filter(s => s.risk_verdict === 'AUTHENTIC').length;
+
+  // Only show 5 most recent in the list
+  const recentScans = scans.slice(0, 5);
 
   return (
     <div className="min-h-screen bg-gray-950">
@@ -114,13 +118,13 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          {scans.length === 0 ? (
+          {recentScans.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               No scans yet. Start by uploading a document.
             </div>
           ) : (
             <div className="space-y-3">
-              {scans.map((scan) => (
+              {recentScans.map((scan) => (
                 <div
                   key={scan.scan_id}
                   className="flex items-center justify-between p-4 bg-gray-800 rounded-lg"

@@ -1,7 +1,7 @@
 import os
 import uuid
 import shutil
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.db.database import get_db
@@ -16,12 +16,13 @@ from app.core.config import settings
 
 router = APIRouter(prefix="/scan", tags=["Scan"])
 
-ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".docx"}
 
 
 @router.post("/upload")
-def upload_and_scan(
+async def upload_document(
     file: UploadFile = File(...),
+    doc_type: str = Form("official_pdf"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -33,24 +34,51 @@ def upload_and_scan(
         )
 
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    temp_filename = f"{uuid.uuid4().hex}{file_ext}"
-    temp_path = os.path.join(settings.UPLOAD_DIR, temp_filename)
+temp_filename = f"{uuid.uuid4().hex}{file_ext}"
+temp_path = os.path.join(settings.UPLOAD_DIR, temp_filename)
 
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+with open(temp_path, "wb") as buffer:
+    shutil.copyfileobj(file.file, buffer)
+
+# Check if image looks like a document
+if file_ext in [".jpg", ".jpeg", ".png"]:
+    from PIL import Image
+    import numpy as np
+    img = Image.open(temp_path).convert("RGB")
+    img_array = np.array(img)
+    # Check if image is mostly one color (likely not a document)
+    std = img_array.std()
+    if std < 8:
+        os.remove(temp_path)
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded image appears to be blank or not a document. Please upload a clear image of a document."
+        )
+    # Check aspect ratio — documents are usually portrait or landscape
+    w, h = img.size
+    aspect_ratio = max(w, h) / min(w, h)
+    if aspect_ratio > 5:
+        os.remove(temp_path)
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded image does not appear to be a document. Please upload a proper document image."
+        )
 
     file_size = os.path.getsize(temp_path)
 
     try:
         metadata_result = analyze_metadata(temp_path, file_ext)
-
+        
         if file_ext == ".pdf":
-            ela_result = perform_ela_on_pdf(temp_path, settings.REPORTS_DIR)
-        else:
-            ela_result = perform_ela(temp_path, settings.REPORTS_DIR)
+    ela_result = perform_ela_on_pdf(temp_path, settings.REPORTS_DIR)
+elif file_ext == ".docx":
+    # Convert docx to PDF first for ELA
+    ela_result = {"ela_score": 0.0, "suspicion_flag": False, "interpretation": "ELA not applicable for Word documents.", "heatmap_path": None}
+else:
+    ela_result = perform_ela(temp_path, settings.REPORTS_DIR)
 
         hash_result = verify_hash(temp_path, db)
-        risk = compute_risk_score(metadata_result, ela_result, hash_result)
+        risk_result = compute_risk_score(metadata_result, ela_result, hash_result, doc_type)
 
         scan = Scan(
             user_id=current_user.id,
@@ -62,8 +90,8 @@ def upload_and_scan(
             ela_score=ela_result.get("ela_score"),
             ela_heatmap_path=ela_result.get("heatmap_path"),
             hash_match_status=hash_result.get("match_status"),
-            risk_score=risk["risk_score"],
-            risk_verdict=risk["risk_verdict"]
+            risk_score=risk_result["risk_score"],
+            risk_verdict=risk_result["risk_verdict"]
         )
         db.add(scan)
         db.commit()
@@ -71,17 +99,16 @@ def upload_and_scan(
 
         return {
             "scan_id": str(scan.id),
-            "filename": file.filename,
+            "original_filename": file.filename,
             "file_format": scan.file_format,
             "file_size_kb": round(file_size / 1024, 2),
             "sha256_hash": hash_result.get("sha256_hash"),
             "layer1_metadata": metadata_result,
             "layer2_ela": ela_result,
             "layer3_hash": hash_result,
-            "risk_score": risk["risk_score"],
-            "risk_verdict": risk["risk_verdict"],
-            "recommendation": risk["recommendation"],
-            "color": risk["color"]
+            "risk_score": risk_result["risk_score"],
+            "risk_verdict": risk_result["risk_verdict"],
+            "recommendation": risk_result["recommendation"],
         }
 
     except Exception as e:
@@ -102,7 +129,7 @@ def get_scan_history(
     return [
         {
             "scan_id": str(s.id),
-            "filename": s.original_filename,
+            "original_filename": s.original_filename,
             "file_format": s.file_format,
             "risk_score": s.risk_score,
             "risk_verdict": s.risk_verdict,
@@ -128,7 +155,7 @@ def get_scan_result(
 
     return {
         "scan_id": str(scan.id),
-        "filename": scan.original_filename,
+        "original_filename": scan.original_filename,
         "file_format": scan.file_format,
         "file_size_kb": round(scan.file_size / 1024, 2) if scan.file_size else None,
         "sha256_hash": scan.sha256_hash,

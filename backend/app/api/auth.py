@@ -33,11 +33,11 @@ def get_admin_user(current_user: User = Depends(get_current_user)):
 
 @router.post("/register", response_model=UserResponse)
 def register(request: RegisterRequest, db: Session = Depends(get_db)):
-    existing = db.query(User).filter(User.email == request.email).first()
+    existing = db.query(User).filter(User.email == request.email.lower().strip()).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     user = User(
-        email=request.email,
+        email=request.email.lower().strip(),
         full_name=request.full_name,
         hashed_password=hash_password(request.password)
     )
@@ -49,11 +49,11 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 def login(request: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == request.email).first()
+    user = db.query(User).filter(User.email == request.email.lower().strip()).first()
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_access_token({"sub": user.email, "role": user.role})
-    return {"access_token": token, "token_type": "bearer"}
+    return {"access_token": token, "token_type": "bearer", "role": user.role}
 
 
 @router.get("/me", response_model=UserResponse)

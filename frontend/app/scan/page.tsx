@@ -13,6 +13,7 @@ export default function ScanPage() {
   const [result, setResult] = useState<any>(null);
   const [downloading, setDownloading] = useState(false);
   const [mode, setMode] = useState<'upload' | 'camera'>('upload');
+  const [docType, setDocType] = useState<string>('official_pdf');
   const [cameraActive, setCameraActive] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -30,10 +31,11 @@ export default function ScanPage() {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'application/pdf': ['.pdf'],
-      'image/jpeg': ['.jpg', '.jpeg'],
-      'image/png': ['.png'],
-    },
+  'application/pdf': ['.pdf'],
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+},
     maxFiles: 1,
   });
 
@@ -85,24 +87,40 @@ export default function ScanPage() {
     toast.success('Photo captured! Click Scan to analyze.');
   };
 
-  const handleScan = async () => {
-    if (!file) return;
-    setScanning(true);
-    try {
-      const response = await uploadDocument(file);
-      setResult(response.data);
-      toast.success('Scan complete!');
-    } catch (error: any) {
-      if (error.response?.status === 401) {
-        toast.error('Session expired. Please login again.');
-        router.push('/login');
-      } else {
-        toast.error(error.response?.data?.detail || 'Scan failed');
-      }
-    } finally {
-      setScanning(false);
+ const handleScan = async () => {
+  if (!file) return;
+  setScanning(true);
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('doc_type', docType);
+    const token = localStorage.getItem('token');
+    const response = await fetch('http://127.0.0.1:8000/scan/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    if (response.status === 401) {
+      toast.error('Session expired. Please login again.');
+      router.push('/login');
+      return;
     }
-  };
+    if (!response.ok) {
+      const err = await response.json();
+      toast.error(err.detail || 'Scan failed');
+      return;
+    }
+    const data = await response.json();
+    setResult(data);
+    toast.success('Scan complete!');
+  } catch (error: any) {
+    toast.error('Scan failed. Please try again.');
+  } finally {
+    setScanning(false);
+  }
+};
 
   const handleDownloadReport = async () => {
     if (!result) return;
@@ -149,7 +167,36 @@ export default function ScanPage() {
           <h1 className="text-2xl font-bold text-white">New Document Scan</h1>
           <p className="text-gray-400 mt-1">Upload or photograph a document for forensic analysis</p>
         </div>
-
+{/* Document Type Selector */}
+{!result && (
+  <div className="mb-6">
+    <label className="block text-sm font-medium text-gray-300 mb-2">
+      Document Type
+    </label>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {[
+        { value: 'official_pdf', label: 'Official PDF', icon: '📄', desc: 'Downloaded PDF document' },
+        { value: 'scanned', label: 'Scanned Copy', icon: '🖨', desc: 'Physically scanned document' },
+        { value: 'phone_photo', label: 'Phone Photo', icon: '📷', desc: 'Photo taken with phone camera' },
+        { value: 'downloaded', label: 'Downloaded File', icon: '⬇️', desc: 'File sent via WhatsApp/email' },
+      ].map(dt => (
+        <button
+          key={dt.value}
+          onClick={() => setDocType(dt.value)}
+          className={`p-3 rounded-xl border-2 text-left transition-all ${
+            docType === dt.value
+              ? 'border-blue-500 bg-blue-500/10'
+              : 'border-gray-700 bg-gray-900 hover:border-gray-600'
+          }`}
+        >
+          <div className="text-2xl mb-1">{dt.icon}</div>
+          <div className="text-white text-sm font-medium">{dt.label}</div>
+          <div className="text-gray-500 text-xs mt-1">{dt.desc}</div>
+        </button>
+      ))}
+    </div>
+  </div>
+)}
         {/* Mode Toggle */}
         {!result && (
           <div className="flex gap-3 mb-6">
@@ -210,7 +257,7 @@ export default function ScanPage() {
                     {isDragActive ? 'Drop your document here' : 'Drag & drop your document'}
                   </p>
                   <p className="text-gray-400 text-sm mt-2">or click to browse files</p>
-                  <p className="text-gray-600 text-xs mt-4">Supports PDF, JPG, PNG</p>
+                  <p className="text-gray-600 text-xs mt-4">Supports PDF, JPG, PNG, DOCX</p>
                 </div>
               )}
             </div>
@@ -234,11 +281,12 @@ export default function ScanPage() {
             ) : cameraActive ? (
               <div className="text-center">
                 <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  className="w-full max-h-64 object-cover rounded-lg mb-4"
-                />
+  ref={videoRef}
+  autoPlay
+  playsInline
+  muted
+  className="w-full max-h-64 object-cover rounded-lg mb-4"
+/>
                 <div className="flex gap-3 justify-center">
                   <button
                     onClick={capturePhoto}
