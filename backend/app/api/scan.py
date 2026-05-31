@@ -30,52 +30,32 @@ async def upload_document(
     if file_ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail="File type not supported. Allowed: PDF, JPG, PNG"
+            detail="File type not supported. Allowed: PDF, JPG, PNG, DOCX"
         )
 
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-temp_filename = f"{uuid.uuid4().hex}{file_ext}"
-temp_path = os.path.join(settings.UPLOAD_DIR, temp_filename)
+    temp_filename = f"{uuid.uuid4().hex}{file_ext}"
+    temp_path = os.path.join(settings.UPLOAD_DIR, temp_filename)
 
-with open(temp_path, "wb") as buffer:
-    shutil.copyfileobj(file.file, buffer)
-
-# Check if image looks like a document
-if file_ext in [".jpg", ".jpeg", ".png"]:
-    from PIL import Image
-    import numpy as np
-    img = Image.open(temp_path).convert("RGB")
-    img_array = np.array(img)
-    # Check if image is mostly one color (likely not a document)
-    std = img_array.std()
-    if std < 8:
-        os.remove(temp_path)
-        raise HTTPException(
-            status_code=400,
-            detail="The uploaded image appears to be blank or not a document. Please upload a clear image of a document."
-        )
-    # Check aspect ratio — documents are usually portrait or landscape
-    w, h = img.size
-    aspect_ratio = max(w, h) / min(w, h)
-    if aspect_ratio > 5:
-        os.remove(temp_path)
-        raise HTTPException(
-            status_code=400,
-            detail="The uploaded image does not appear to be a document. Please upload a proper document image."
-        )
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
     file_size = os.path.getsize(temp_path)
 
     try:
         metadata_result = analyze_metadata(temp_path, file_ext)
-        
+
         if file_ext == ".pdf":
-    ela_result = perform_ela_on_pdf(temp_path, settings.REPORTS_DIR)
-elif file_ext == ".docx":
-    # Convert docx to PDF first for ELA
-    ela_result = {"ela_score": 0.0, "suspicion_flag": False, "interpretation": "ELA not applicable for Word documents.", "heatmap_path": None}
-else:
-    ela_result = perform_ela(temp_path, settings.REPORTS_DIR)
+            ela_result = perform_ela_on_pdf(temp_path, settings.REPORTS_DIR)
+        elif file_ext == ".docx":
+            ela_result = {
+                "ela_score": 0.0,
+                "suspicion_flag": False,
+                "interpretation": "ELA not applicable for Word documents.",
+                "heatmap_path": None
+            }
+        else:
+            ela_result = perform_ela(temp_path, settings.REPORTS_DIR)
 
         hash_result = verify_hash(temp_path, db)
         risk_result = compute_risk_score(metadata_result, ela_result, hash_result, doc_type)
@@ -111,6 +91,8 @@ else:
             "recommendation": risk_result["recommendation"],
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)

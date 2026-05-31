@@ -258,6 +258,7 @@ export default function ScanPage() {
                   </p>
                   <p className="text-gray-400 text-sm mt-2">or click to browse files</p>
                   <p className="text-gray-600 text-xs mt-4">Supports PDF, JPG, PNG, DOCX</p>
+<p className="text-gray-600 text-xs mt-1">Please upload document images only (certificates, transcripts, ID cards)</p>
                 </div>
               )}
             </div>
