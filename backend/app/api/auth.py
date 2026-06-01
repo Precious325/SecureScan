@@ -104,19 +104,19 @@ async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(
 
 @router.post("/reset-password")
 def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    print(f"DEBUG - Email received: '{request.email}'")
+    print(f"DEBUG - Code received: '{request.code}'")
     user = db.query(User).filter(User.email == request.email.lower().strip()).first()
+    print(f"DEBUG - User found: {user}")
     if not user:
         raise HTTPException(status_code=404, detail="No account found with this email address")
 
-    # Check code
     if not user.reset_code or user.reset_code != request.code:
         raise HTTPException(status_code=400, detail="Invalid reset code")
 
-    # Check expiry
-    if not user.reset_code_expires or datetime.utcnow() > user.reset_code_expires:
+    if not user.reset_code_expires or datetime.utcnow() > user.reset_code_expires.replace(tzinfo=None):
         raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one.")
 
-    # Update password
     user.hashed_password = hash_password(request.new_password)
     user.reset_code = None
     user.reset_code_expires = None

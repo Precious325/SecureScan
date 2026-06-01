@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 export default function AdminPage() {
   const router = useRouter();
   const [users, setUsers] = useState<any[]>([]);
+  const [resetRequests, setResetRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [newPassword, setNewPassword] = useState('');
@@ -16,24 +17,31 @@ export default function AdminPage() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) { router.push('/login'); return; }
-    fetchUsers(token);
+    fetchData(token);
   }, []);
 
-  const fetchUsers = async (token?: string) => {
+  const fetchData = async (token?: string) => {
     const t = token || localStorage.getItem('token');
     try {
-      const res = await fetch('http://127.0.0.1:8000/admin/users', {
-        headers: { 'Authorization': `Bearer ${t}` }
-      });
-      if (res.status === 403) {
+      const [usersRes, requestsRes] = await Promise.all([
+        fetch('http://127.0.0.1:8000/admin/users', {
+          headers: { 'Authorization': `Bearer ${t}` }
+        }),
+        fetch('http://127.0.0.1:8000/admin/reset-requests', {
+          headers: { 'Authorization': `Bearer ${t}` }
+        })
+      ]);
+      if (usersRes.status === 403) {
         toast.error('Admin access required');
         router.push('/dashboard');
         return;
       }
-      const data = await res.json();
-      setUsers(data);
+      const usersData = await usersRes.json();
+      const requestsData = await requestsRes.json();
+      setUsers(usersData);
+      setResetRequests(requestsData);
     } catch (error) {
-      toast.error('Failed to load users');
+      toast.error('Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -77,10 +85,44 @@ export default function AdminPage() {
       });
       if (res.ok) {
         toast.success(`User ${user.is_active ? 'deactivated' : 'activated'}`);
-        fetchUsers();
+        fetchData();
       }
     } catch (error) {
       toast.error('Failed to update user');
+    }
+  };
+
+  const handleApproveRequest = async (requestId: string, email: string) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/admin/reset-requests/${requestId}/approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        toast.success(`Reset code sent to ${email}`);
+        fetchData();
+      } else {
+        toast.error('Failed to approve request');
+      }
+    } catch (error) {
+      toast.error('Failed to approve request');
+    }
+  };
+
+  const handleRejectRequest = async (requestId: string) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/admin/reset-requests/${requestId}/reject`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        toast.success('Request rejected');
+        fetchData();
+      } else {
+        toast.error('Failed to reject request');
+      }
+    } catch (error) {
+      toast.error('Failed to reject request');
     }
   };
 
@@ -107,7 +149,7 @@ export default function AdminPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-4 gap-6 mb-8">
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
             <p className="text-gray-400 text-sm">Total Users</p>
             <p className="text-3xl font-bold text-white mt-1">{users.length}</p>
@@ -120,7 +162,47 @@ export default function AdminPage() {
             <p className="text-gray-400 text-sm">Admin Users</p>
             <p className="text-3xl font-bold text-blue-400 mt-1">{users.filter(u => u.role === 'admin').length}</p>
           </div>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+            <p className="text-gray-400 text-sm">Pending Resets</p>
+            <p className="text-3xl font-bold text-yellow-400 mt-1">{resetRequests.length}</p>
+          </div>
         </div>
+
+        {/* Password Reset Requests */}
+        {resetRequests.length > 0 && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-6 mb-6">
+            <h2 className="text-yellow-400 font-semibold text-lg mb-4">
+              ⚠ Pending Password Reset Requests ({resetRequests.length})
+            </h2>
+            <div className="space-y-3">
+              {resetRequests.map(req => (
+                <div key={req.id} className="flex items-center justify-between bg-gray-900 rounded-lg p-4">
+                  <div>
+                    <p className="text-white font-medium">{req.full_name}</p>
+                    <p className="text-gray-400 text-sm">{req.email}</p>
+                    <p className="text-gray-500 text-xs mt-1">
+                      Requested: {new Date(req.requested_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleApproveRequest(req.id, req.email)}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg"
+                    >
+                      Approve &amp; Send Code
+                    </button>
+                    <button
+                      onClick={() => handleRejectRequest(req.id)}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Search */}
         <div className="mb-4">

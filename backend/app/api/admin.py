@@ -6,6 +6,7 @@ from app.models.user import User
 from app.models.hash_template import HashTemplate
 from app.api.auth import get_current_user, get_admin_user
 from app.core.security import hash_password
+from app.core.config import settings
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -133,3 +134,96 @@ def delete_template(
     db.delete(template)
     db.commit()
     return {"message": "Template deleted successfully"}
+    # ── Password Reset Request Management ────────────────────────────────────────
+
+@router.get("/reset-requests")
+def get_reset_requests(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user)
+):
+    from app.models.reset_request import ResetRequest
+    requests = db.query(ResetRequest).filter(
+        ResetRequest.status == "pending"
+    ).order_by(ResetRequest.requested_at.desc()).all()
+    return [
+        {
+            "id": str(r.id),
+            "email": r.email,
+            "full_name": r.full_name,
+            "status": r.status,
+            "requested_at": str(r.requested_at)
+        }
+        for r in requests
+    ]
+
+
+@router.post("/reset-requests/{request_id}/approve")
+def approve_reset_request(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user)
+):
+    from app.models.reset_request import ResetRequest
+    from datetime import timedelta
+    import random
+    import smtplib
+    from email.mime.text import MIMEText
+    from datetime import datetime
+
+    reset_req = db.query(ResetRequest).filter(ResetRequest.id == request_id).first()
+    if not reset_req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    code = str(random.randint(100000, 999999))
+    expires = datetime.utcnow() + timedelta(minutes=15)
+
+    reset_req.reset_code = code
+    reset_req.reset_code_expires = expires
+    reset_req.status = "approved"
+
+    user = db.query(User).filter(User.email == reset_req.email).first()
+    if user:
+        user.reset_code = code
+        user.reset_code_expires = expires
+
+    db.commit()
+
+    try:
+        msg = MIMEText(
+            f"Hello {reset_req.full_name},\n\n"
+            f"Your password reset request has been approved.\n\n"
+            f"Your reset code is: {code}\n\n"
+            f"This code expires in 15 minutes.\n\n"
+            f"Go to the SecureScan reset password page and enter this code.\n\n"
+            f"SecureScan — University of Bamenda COLTECH"
+        )
+        msg['Subject'] = 'SecureScan Password Reset Code'
+        msg['From'] = settings.MAIL_USERNAME
+        msg['To'] = reset_req.email
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+            server.send_message(msg)
+    except Exception as e:
+        print(f"Email error: {e}")
+
+    return {"message": f"Reset code sent to {reset_req.email}"}
+
+
+@router.post("/reset-requests/{request_id}/reject")
+def reject_reset_request(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user)
+):
+    from app.models.reset_request import ResetRequest
+    from datetime import datetime
+
+    reset_req = db.query(ResetRequest).filter(ResetRequest.id == request_id).first()
+    if not reset_req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    reset_req.status = "rejected"
+    db.commit()
+
+    return {"message": "Request rejected"}
