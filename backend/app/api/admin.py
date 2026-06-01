@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from datetime import datetime, timedelta
+import random
+import smtplib
+from email.mime.text import MIMEText
 from app.db.database import get_db
 from app.models.user import User
 from app.models.hash_template import HashTemplate
@@ -89,7 +93,6 @@ def add_template(
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="This hash is already registered")
-
     template = HashTemplate(
         institution_name=request.institution_name,
         document_type=request.document_type,
@@ -134,7 +137,9 @@ def delete_template(
     db.delete(template)
     db.commit()
     return {"message": "Template deleted successfully"}
-    # ── Password Reset Request Management ────────────────────────────────────────
+
+
+# ── Password Reset Request Management ────────────────────────────────────────
 
 @router.get("/reset-requests")
 def get_reset_requests(
@@ -164,11 +169,6 @@ def approve_reset_request(
     current_user: User = Depends(get_admin_user)
 ):
     from app.models.reset_request import ResetRequest
-    from datetime import timedelta
-    import random
-    import smtplib
-    from email.mime.text import MIMEText
-    from datetime import datetime
 
     reset_req = db.query(ResetRequest).filter(ResetRequest.id == request_id).first()
     if not reset_req:
@@ -217,7 +217,6 @@ def reject_reset_request(
     current_user: User = Depends(get_admin_user)
 ):
     from app.models.reset_request import ResetRequest
-    from datetime import datetime
 
     reset_req = db.query(ResetRequest).filter(ResetRequest.id == request_id).first()
     if not reset_req:
@@ -225,5 +224,29 @@ def reject_reset_request(
 
     reset_req.status = "rejected"
     db.commit()
-
     return {"message": "Request rejected"}
+
+
+# ── All Scans ─────────────────────────────────────────────────────────────────
+
+@router.get("/scans")
+def get_all_scans(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user)
+):
+    from app.models.scan import Scan
+    scans = db.query(Scan).order_by(Scan.upload_timestamp.desc()).all()
+    return [
+        {
+            "scan_id": str(s.id),
+            "user_id": str(s.user_id),
+            "original_filename": s.original_filename,
+            "file_format": s.file_format,
+            "risk_score": s.risk_score,
+            "risk_verdict": s.risk_verdict,
+            "hash_match_status": s.hash_match_status,
+            "upload_timestamp": str(s.upload_timestamp),
+            "sha256_hash": s.sha256_hash,
+        }
+        for s in scans
+    ]
