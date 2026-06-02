@@ -22,9 +22,10 @@ export default function LoginPage() {
     try {
       const response = await loginUser({ email, password });
       setToken(response.data.access_token);
+      localStorage.setItem('userRole', response.data.role || 'user');
       toast.success('Login successful!');
       router.push('/dashboard');
-   } catch (error: any) {
+    } catch (error: any) {
       setErrors({ general: 'Incorrect email or password. Please check and try again.' });
     } finally {
       setLoading(false);
@@ -34,7 +35,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4">
             <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -62,16 +62,12 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setErrors(prev => ({ ...prev, email: undefined })); }}
                 required
-                autoComplete="new-password"
+                autoComplete="email"
                 className={`w-full px-4 py-3 bg-gray-800 border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 transition-colors
-                  ${errors.email
-                    ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-700 focus:border-blue-500 focus:ring-blue-500'}`}
+                  ${errors.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-700 focus:border-blue-500 focus:ring-blue-500'}`}
                 placeholder="you@example.com"
               />
-              {errors.email && (
-                <p className="text-red-400 text-xs mt-1">{errors.email}</p>
-              )}
+              {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
             </div>
 
             <div>
@@ -82,11 +78,9 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); setErrors(prev => ({ ...prev, password: undefined })); }}
                   required
-                  autoComplete="new-password"
+                  autoComplete="current-password"
                   className={`w-full px-4 py-3 pr-12 bg-gray-800 border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 transition-colors
-                    ${errors.password
-                      ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
-                      : 'border-gray-700 focus:border-blue-500 focus:ring-blue-500'}`}
+                    ${errors.password ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-700 focus:border-blue-500 focus:ring-blue-500'}`}
                   placeholder="••••••••"
                 />
                 <button
@@ -106,9 +100,7 @@ export default function LoginPage() {
                   )}
                 </button>
               </div>
-              {errors.password && (
-                <p className="text-red-400 text-xs mt-1">{errors.password}</p>
-              )}
+              {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password}</p>}
             </div>
 
             <div className="flex justify-end">

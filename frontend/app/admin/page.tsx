@@ -14,6 +14,7 @@ export default function AdminPage() {
   const [resetting, setResetting] = useState(false);
   const [search, setSearch] = useState('');
   const [allScans, setAllScans] = useState<any[]>([]);
+  const [scanFilter, setScanFilter] = useState('ALL');
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -98,6 +99,24 @@ export default function AdminPage() {
     }
   };
 
+  const handleToggleRole = async (user: any) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/admin/users/${user.id}/toggle-role`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        toast.success(`User role changed to ${user.role === 'admin' ? 'user' : 'admin'}`);
+        fetchData();
+      } else {
+        const err = await res.json();
+        toast.error(err.detail || 'Failed to update role');
+      }
+    } catch (error) {
+      toast.error('Failed to update role');
+    }
+  };
+
   const handleApproveRequest = async (requestId: string, email: string) => {
     try {
       const res = await fetch(`http://127.0.0.1:8000/admin/reset-requests/${requestId}/approve`, {
@@ -137,6 +156,10 @@ export default function AdminPage() {
     u.full_name.toLowerCase().includes(search.toLowerCase())
   );
 
+  const filteredScans = scanFilter === 'ALL'
+    ? allScans
+    : allScans.filter(s => s.risk_verdict === scanFilter);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -155,28 +178,28 @@ export default function AdminPage() {
         </div>
 
         {/* Stats */}
-<div className="grid grid-cols-5 gap-4 mb-8">
-  <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-    <p className="text-gray-400 text-sm">Total Users</p>
-    <p className="text-3xl font-bold text-white mt-1">{users.length}</p>
-  </div>
-  <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-    <p className="text-gray-400 text-sm">Active Users</p>
-    <p className="text-3xl font-bold text-green-400 mt-1">{users.filter(u => u.is_active).length}</p>
-  </div>
-  <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-    <p className="text-gray-400 text-sm">Admin Users</p>
-    <p className="text-3xl font-bold text-blue-400 mt-1">{users.filter(u => u.role === 'admin').length}</p>
-  </div>
-  <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-    <p className="text-gray-400 text-sm">Pending Resets</p>
-    <p className="text-3xl font-bold text-yellow-400 mt-1">{resetRequests.length}</p>
-  </div>
-  <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-    <p className="text-gray-400 text-sm">Total Scans</p>
-    <p className="text-3xl font-bold text-purple-400 mt-1">{allScans.length}</p>
-  </div>
-</div>
+        <div className="grid grid-cols-5 gap-4 mb-8">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p className="text-gray-400 text-sm">Total Users</p>
+            <p className="text-3xl font-bold text-white mt-1">{users.length}</p>
+          </div>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p className="text-gray-400 text-sm">Active Users</p>
+            <p className="text-3xl font-bold text-green-400 mt-1">{users.filter(u => u.is_active).length}</p>
+          </div>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p className="text-gray-400 text-sm">Admin Users</p>
+            <p className="text-3xl font-bold text-blue-400 mt-1">{users.filter(u => u.role === 'admin').length}</p>
+          </div>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p className="text-gray-400 text-sm">Pending Resets</p>
+            <p className="text-3xl font-bold text-yellow-400 mt-1">{resetRequests.length}</p>
+          </div>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p className="text-gray-400 text-sm">Total Scans</p>
+            <p className="text-3xl font-bold text-purple-400 mt-1">{allScans.length}</p>
+          </div>
+        </div>
 
         {/* Password Reset Requests */}
         {resetRequests.length > 0 && (
@@ -253,7 +276,7 @@ export default function AdminPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <button
                         onClick={() => { setSelectedUser(user); setNewPassword(''); }}
                         className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
@@ -266,6 +289,12 @@ export default function AdminPage() {
                       >
                         {user.is_active ? 'Deactivate' : 'Activate'}
                       </button>
+                      <button
+                        onClick={() => handleToggleRole(user)}
+                        className={`px-3 py-1 text-white text-xs rounded transition-colors ${user.role === 'admin' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-purple-600 hover:bg-purple-700'}`}
+                      >
+                        {user.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -274,82 +303,93 @@ export default function AdminPage() {
           </table>
         </div>
 
-        {/* All Scans */}
-<div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-8">
-  <div className="px-6 py-4 border-b border-gray-800">
-    <h2 className="text-white font-semibold">All Document Scans ({allScans.length})</h2>
-    <p className="text-gray-400 text-xs mt-1">All scans performed by all users</p>
-  </div>
-  {allScans.length === 0 ? (
-    <div className="text-center py-8 text-gray-500">No scans yet</div>
-  ) : (
-    <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-gray-800">
-            <th className="text-left px-6 py-3 text-gray-400 text-xs">Document</th>
-            <th className="text-left px-6 py-3 text-gray-400 text-xs">User</th>
-            <th className="text-left px-6 py-3 text-gray-400 text-xs">Format</th>
-            <th className="text-left px-6 py-3 text-gray-400 text-xs">Score</th>
-            <th className="text-left px-6 py-3 text-gray-400 text-xs">Verdict</th>
-            <th className="text-left px-6 py-3 text-gray-400 text-xs">Hash</th>
-            <th className="text-left px-6 py-3 text-gray-400 text-xs">Date</th>
-            <th className="text-left px-6 py-3 text-gray-400 text-xs">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {allScans.map((scan, index) => {
-            const user = users.find(u => u.id === scan.user_id);
-            return (
-              <tr key={scan.scan_id} className={`border-b border-gray-800 ${index % 2 === 0 ? '' : 'bg-gray-800/20'}`}>
-                <td className="px-6 py-3 text-white text-xs max-w-32 truncate">{scan.original_filename}</td>
-                <td className="px-6 py-3 text-gray-400 text-xs">{user?.email || 'Unknown'}</td>
-                <td className="px-6 py-3 text-gray-400 text-xs">{scan.file_format}</td>
-                <td className="px-6 py-3 text-white text-xs font-bold">{scan.risk_score}/100</td>
-                <td className="px-6 py-3">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    scan.risk_verdict === 'AUTHENTIC' ? 'bg-green-500/20 text-green-400' :
-                    scan.risk_verdict === 'SUSPICIOUS' ? 'bg-yellow-500/20 text-yellow-400' :
-                    scan.risk_verdict === 'LIKELY FORGED' ? 'bg-orange-500/20 text-orange-400' :
-                    'bg-red-500/20 text-red-400'
-                  }`}>
-                    {scan.risk_verdict}
-                  </span>
-                </td>
-                <td className="px-6 py-3">
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    scan.hash_match_status === 'MATCH' ? 'bg-green-500/20 text-green-400' :
-                    scan.hash_match_status === 'NO_MATCH' ? 'bg-red-500/20 text-red-400' :
-                    'bg-gray-700 text-gray-400'
-                  }`}>
-                    {scan.hash_match_status}
-                  </span>
-                </td>
-                <td className="px-6 py-3 text-gray-500 text-xs">
-                  {new Date(scan.upload_timestamp).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-3">
-                  <button
-                    onClick={() => {
-                      const hashInfo = `Document: ${scan.original_filename}\nSHA-256: ${scan.sha256_hash}\n\nCopy the hash above to add it as a template.`;
-                      navigator.clipboard.writeText(scan.sha256_hash);
-                      toast.success('SHA-256 hash copied to clipboard — paste it in Templates to register this document');
-                    }}
-                    className="px-2 py-1 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white text-xs rounded transition-colors"
-                  >
-                    Copy Hash
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  )}
-</div>
+        {/* All Scans with filter */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-8">
+          <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+            <div>
+              <h2 className="text-white font-semibold">All Document Scans ({filteredScans.length})</h2>
+              <p className="text-gray-400 text-xs mt-1">All scans performed by all users</p>
+            </div>
+            <select
+              value={scanFilter}
+              onChange={e => setScanFilter(e.target.value)}
+              className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+            >
+              <option value="ALL">All Verdicts</option>
+              <option value="AUTHENTIC">Authentic</option>
+              <option value="SUSPICIOUS">Suspicious</option>
+              <option value="LIKELY FORGED">Likely Forged</option>
+              <option value="FORGED">Forged</option>
+            </select>
+          </div>
+          {filteredScans.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">No scans found</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-800">
+                    <th className="text-left px-6 py-3 text-gray-400 text-xs">Document</th>
+                    <th className="text-left px-6 py-3 text-gray-400 text-xs">User</th>
+                    <th className="text-left px-6 py-3 text-gray-400 text-xs">Format</th>
+                    <th className="text-left px-6 py-3 text-gray-400 text-xs">Score</th>
+                    <th className="text-left px-6 py-3 text-gray-400 text-xs">Verdict</th>
+                    <th className="text-left px-6 py-3 text-gray-400 text-xs">Hash</th>
+                    <th className="text-left px-6 py-3 text-gray-400 text-xs">Date</th>
+                    <th className="text-left px-6 py-3 text-gray-400 text-xs">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredScans.map((scan, index) => {
+                    const user = users.find(u => u.id === scan.user_id);
+                    return (
+                      <tr key={scan.scan_id} className={`border-b border-gray-800 ${index % 2 === 0 ? '' : 'bg-gray-800/20'}`}>
+                        <td className="px-6 py-3 text-white text-xs max-w-32 truncate">{scan.original_filename}</td>
+                        <td className="px-6 py-3 text-gray-400 text-xs">{user?.email || 'Unknown'}</td>
+                        <td className="px-6 py-3 text-gray-400 text-xs">{scan.file_format}</td>
+                        <td className="px-6 py-3 text-white text-xs font-bold">{scan.risk_score}/100</td>
+                        <td className="px-6 py-3">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            scan.risk_verdict === 'AUTHENTIC' ? 'bg-green-500/20 text-green-400' :
+                            scan.risk_verdict === 'SUSPICIOUS' ? 'bg-yellow-500/20 text-yellow-400' :
+                            scan.risk_verdict === 'LIKELY FORGED' ? 'bg-orange-500/20 text-orange-400' :
+                            'bg-red-500/20 text-red-400'
+                          }`}>
+                            {scan.risk_verdict}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3">
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            scan.hash_match_status === 'MATCH' ? 'bg-green-500/20 text-green-400' :
+                            scan.hash_match_status === 'NO_MATCH' ? 'bg-red-500/20 text-red-400' :
+                            'bg-gray-700 text-gray-400'
+                          }`}>
+                            {scan.hash_match_status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3 text-gray-500 text-xs">
+                          {new Date(scan.upload_timestamp).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-3">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(scan.sha256_hash);
+                              toast.success('SHA-256 hash copied — paste it in Templates to register this document');
+                            }}
+                            className="px-2 py-1 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white text-xs rounded transition-colors"
+                          >
+                            Copy Hash
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
-{/* Hash Templates Section */}
         {/* Hash Templates Section */}
         <div className="bg-blue-600/10 border border-blue-600/30 rounded-xl p-6 flex items-center justify-between">
           <div>

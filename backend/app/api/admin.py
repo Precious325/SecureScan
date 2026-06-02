@@ -73,6 +73,27 @@ def toggle_user_active(
     return {"message": f"User {'activated' if user.is_active else 'deactivated'}", "is_active": user.is_active}
 
 
+@router.post("/users/{user_id}/toggle-role")
+def toggle_user_role(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user)
+):
+    # Only the primary admin can change roles
+    if current_user.email != "meshiprecious042@gmail.com":
+        raise HTTPException(
+            status_code=403,
+            detail="Only the primary administrator can change user roles"
+        )
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if str(user.id) == str(current_user.id):
+        raise HTTPException(status_code=400, detail="Cannot change your own role")
+    user.role = "user" if user.role == "admin" else "admin"
+    db.commit()
+    return {"message": f"User role changed to {user.role}", "role": user.role}
+
 # ── Hash Template Management ──────────────────────────────────────────────────
 
 class TemplateRequest(BaseModel):

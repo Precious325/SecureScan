@@ -39,7 +39,7 @@ export default function Navbar({ userName }: { userName?: string }) {
           <span className="text-white font-bold text-lg">SecureScan</span>
         </Link>
 
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3 flex-wrap">
           <Link href="/dashboard" className="text-gray-300 hover:text-white transition-colors">
             Dashboard
           </Link>
