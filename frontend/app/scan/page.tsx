@@ -13,10 +13,59 @@ export default function ScanPage() {
   const [result, setResult] = useState<any>(null);
   const [downloading, setDownloading] = useState(false);
   const [docType, setDocType] = useState<string>('official_pdf');
+  const [rejected, setRejected] = useState<string | null>(null);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const checkForFace = (file: File): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(false); return; }
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        let skinPixels = 0;
+        const totalPixels = data.length / 4;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const isSkin = (
+            r > 95 && g > 40 && b > 20 &&
+            r > g && r > b &&
+            Math.abs(r - g) > 15 &&
+            r > 100 &&
+            r - Math.min(g, b) > 10
+          );
+          if (isSkin) skinPixels++;
+        }
+        const skinRatio = skinPixels / totalPixels;
+        resolve(skinRatio > 0.25);
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = () => resolve(false);
+      img.src = url;
+    });
+  };
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      setFile(acceptedFiles[0]);
+      const uploadedFile = acceptedFiles[0];
+      const ext = uploadedFile.name.split('.').pop()?.toLowerCase();
+      if (['jpg', 'jpeg', 'png'].includes(ext || '')) {
+        const hasFace = await checkForFace(uploadedFile);
+        if (hasFace) {
+          setRejected('This appears to be a photo of a person, not a document. Please upload a certificate, transcript, ID card, or other official document.');
+          setFile(null);
+          return;
+        }
+      }
+      setRejected(null);
+      setFile(uploadedFile);
       setResult(null);
     }
   }, []);
@@ -98,6 +147,7 @@ export default function ScanPage() {
   const resetScan = () => {
     setFile(null);
     setResult(null);
+    setRejected(null);
   };
 
   return (
@@ -112,9 +162,7 @@ export default function ScanPage() {
         {/* Document Type Selector */}
         {!result && (
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Document Type
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Document Type</label>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { value: 'official_pdf', label: 'Official PDF', icon: '📄', desc: 'Downloaded PDF document' },
@@ -142,43 +190,59 @@ export default function ScanPage() {
 
         {/* Upload Area */}
         {!result && (
-          <>
-            <div
-              {...getRootProps()}
-              className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors mb-6
-                ${isDragActive ? 'border-blue-500 bg-blue-500/10'
-                  : file ? 'border-green-500 bg-green-500/5'
-                  : 'border-gray-700 bg-gray-900 hover:border-gray-600'}`}
-            >
-              <input {...getInputProps()} />
-              {file ? (
-                <div>
-                  <div className="w-16 h-16 bg-green-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-white font-medium text-lg">{file.name}</p>
-                  <p className="text-gray-400 text-sm mt-1">{(file.size / 1024).toFixed(1)} KB</p>
-                  <p className="text-gray-500 text-sm mt-3">Click or drag to change file</p>
+          <div
+            {...getRootProps()}
+            className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors mb-6
+              ${isDragActive ? 'border-blue-500 bg-blue-500/10'
+                : rejected ? 'border-red-500 bg-red-500/5'
+                : file ? 'border-green-500 bg-green-500/5'
+                : 'border-gray-700 bg-gray-900 hover:border-gray-600'}`}
+          >
+            <input {...getInputProps()} />
+
+            {rejected ? (
+              <div>
+                <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
                 </div>
-              ) : (
-                <div>
-                  <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                  </div>
-                  <p className="text-white font-medium text-lg">
-                    {isDragActive ? 'Drop your document here' : 'Drag & drop your document'}
-                  </p>
-                  <p className="text-gray-400 text-sm mt-2">or click to browse files</p>
-                  <p className="text-gray-600 text-xs mt-4">Supports PDF, JPG, PNG, DOCX</p>
-                  <p className="text-gray-600 text-xs mt-1">Please upload document images only (certificates, transcripts, ID cards)</p>
+                <p className="text-red-400 font-semibold text-lg mb-2">Document Not Accepted</p>
+                <p className="text-gray-400 text-sm mb-6 max-w-sm mx-auto">{rejected}</p>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setRejected(null); }}
+                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition-colors"
+                >
+                  Try Another Document
+                </button>
+              </div>
+            ) : file ? (
+              <div>
+                <div className="w-16 h-16 bg-green-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                 </div>
-              )}
-            </div>
-          </>
+                <p className="text-white font-medium text-lg">{file.name}</p>
+                <p className="text-gray-400 text-sm mt-1">{(file.size / 1024).toFixed(1)} KB</p>
+                <p className="text-gray-500 text-sm mt-3">Click or drag to change file</p>
+              </div>
+            ) : (
+              <div>
+                <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                </div>
+                <p className="text-white font-medium text-lg">
+                  {isDragActive ? 'Drop your document here' : 'Drag & drop your document'}
+                </p>
+                <p className="text-gray-400 text-sm mt-2">or click to browse files</p>
+                <p className="text-gray-600 text-xs mt-4">Supports PDF, JPG, PNG, DOCX</p>
+                <p className="text-gray-600 text-xs mt-1">Please upload document images only (certificates, transcripts, ID cards)</p>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Scan Button */}
