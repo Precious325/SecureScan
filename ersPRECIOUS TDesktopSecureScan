@@ -1,0 +1,10 @@
+[33mcommit 2473a47ab631af09ed58f1ed1556e1e7168e685d[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: Precious325 <meshiprecious95@email.com>
+Date:   Wed Jun 3 09:58:23 2026 +0100
+
+    Remove .env from repo and add gitignore
+
+backend/.env
+backend/.gitignore
+backend/app/core/__pycache__/config.cpython-312.pyc
+backend/app/core/config.py

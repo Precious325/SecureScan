@@ -8,6 +8,7 @@ import { getMe } from '@/lib/api';
 export default function Navbar({ userName }: { userName?: string }) {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -27,6 +28,10 @@ export default function Navbar({ userName }: { userName?: string }) {
     router.push('/login');
   };
 
+  const getInitials = (name: string) => {
+    return name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
+  };
+
   return (
     <nav className="bg-gray-900 border-b border-gray-800 px-6 py-4">
       <div className="max-w-6xl mx-auto flex items-center justify-between">
@@ -39,7 +44,7 @@ export default function Navbar({ userName }: { userName?: string }) {
           <span className="text-white font-bold text-lg">SecureScan</span>
         </Link>
 
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-6">
           <Link href="/dashboard" className="text-gray-300 hover:text-white transition-colors">
             Dashboard
           </Link>
@@ -54,15 +59,40 @@ export default function Navbar({ userName }: { userName?: string }) {
               ⚙ Admin
             </Link>
           )}
-          {(user?.full_name || userName) && (
-            <span className="text-gray-400 text-sm">{user?.full_name || userName}</span>
-          )}
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg text-sm transition-colors"
-          >
-            Sign out
-          </button>
+
+          {/* Profile Avatar */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold hover:bg-blue-700 transition-colors focus:outline-none"
+            >
+              {getInitials(user?.full_name || userName || '?')}
+            </button>
+
+            {showDropdown && (
+              <div className="absolute right-0 mt-2 w-48 bg-gray-900 border border-gray-800 rounded-xl shadow-lg z-50">
+                <div className="px-4 py-3 border-b border-gray-800">
+                  <p className="text-white text-sm font-medium truncate">{user?.full_name || userName}</p>
+                  <p className="text-gray-400 text-xs truncate">{user?.email}</p>
+                </div>
+                <div className="py-1">
+                  <Link
+                    href="/profile"
+                    onClick={() => setShowDropdown(false)}
+                    className="block px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-800 text-sm transition-colors"
+                  >
+                    👤 My Profile
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left px-4 py-2 text-red-400 hover:text-red-300 hover:bg-gray-800 text-sm transition-colors"
+                  >
+                    🚪 Sign Out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </nav>

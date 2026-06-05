@@ -1,10 +1,10 @@
 'use client';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import Navbar from '@/components/Navbar';
-import { uploadDocument, downloadReport } from '@/lib/api';
+import { downloadReport } from '@/lib/api';
 
 export default function ScanPage() {
   const router = useRouter();
@@ -12,125 +12,58 @@ export default function ScanPage() {
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [downloading, setDownloading] = useState(false);
-  const [mode, setMode] = useState<'upload' | 'camera'>('upload');
   const [docType, setDocType] = useState<string>('official_pdf');
-  const [cameraActive, setCameraActive] = useState(false);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
       setFile(acceptedFiles[0]);
       setResult(null);
-      setCapturedImage(null);
     }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-  'application/pdf': ['.pdf'],
-  'image/jpeg': ['.jpg', '.jpeg'],
-  'image/png': ['.png'],
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-},
+      'application/pdf': ['.pdf'],
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/png': ['.png'],
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+    },
     maxFiles: 1,
   });
 
-  const startCamera = async () => {
+  const handleScan = async () => {
+    if (!file) return;
+    setScanning(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } }
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('doc_type', docType);
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://127.0.0.1:8000/scan/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
       });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+      if (response.status === 401) {
+        toast.error('Session expired. Please login again.');
+        router.push('/login');
+        return;
       }
-      setCameraActive(true);
+      if (!response.ok) {
+        const err = await response.json();
+        toast.error(err.detail || 'Scan failed');
+        return;
+      }
+      const data = await response.json();
+      setResult(data);
+      toast.success('Scan complete!');
     } catch (error: any) {
-      console.error('Camera error:', error);
-      if (error.name === 'NotAllowedError') {
-        toast.error('Camera access denied. Please allow camera in browser settings.');
-      } else if (error.name === 'NotFoundError') {
-        toast.error('No camera found on this device.');
-      } else if (error.name === 'NotReadableError') {
-        toast.error('Camera is already in use by another application. Please close other apps using the camera.');
-      } else {
-        toast.error(`Camera error: ${error.message}`);
-      }
+      toast.error('Scan failed. Please try again.');
+    } finally {
+      setScanning(false);
     }
   };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    setCameraActive(false);
-  };
-
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
-    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
-    setCapturedImage(imageDataUrl);
-
-    // Convert to File
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const capturedFile = new File([blob], 'captured_document.jpg', { type: 'image/jpeg' });
-        setFile(capturedFile);
-        setResult(null);
-      }
-    }, 'image/jpeg', 0.9);
-
-    stopCamera();
-    toast.success('Photo captured! Click Scan to analyze.');
-  };
-
- const handleScan = async () => {
-  if (!file) return;
-  setScanning(true);
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('doc_type', docType);
-    const token = localStorage.getItem('token');
-    const response = await fetch('http://127.0.0.1:8000/scan/upload', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      },
-      body: formData
-    });
-    if (response.status === 401) {
-      toast.error('Session expired. Please login again.');
-      router.push('/login');
-      return;
-    }
-    if (!response.ok) {
-      const err = await response.json();
-      toast.error(err.detail || 'Scan failed');
-      return;
-    }
-    const data = await response.json();
-    setResult(data);
-    toast.success('Scan complete!');
-  } catch (error: any) {
-    toast.error('Scan failed. Please try again.');
-  } finally {
-    setScanning(false);
-  }
-};
 
   const handleDownloadReport = async () => {
     if (!result) return;
@@ -165,8 +98,6 @@ export default function ScanPage() {
   const resetScan = () => {
     setFile(null);
     setResult(null);
-    setCapturedImage(null);
-    stopCamera();
   };
 
   return (
@@ -175,67 +106,42 @@ export default function ScanPage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">New Document Scan</h1>
-          <p className="text-gray-400 mt-1">Upload or photograph a document for forensic analysis</p>
+          <p className="text-gray-400 mt-1">Upload a document for forensic analysis</p>
         </div>
-{/* Document Type Selector */}
-{!result && (
-  <div className="mb-6">
-    <label className="block text-sm font-medium text-gray-300 mb-2">
-      Document Type
-    </label>
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      {[
-        { value: 'official_pdf', label: 'Official PDF', icon: '📄', desc: 'Downloaded PDF document' },
-        { value: 'scanned', label: 'Scanned Copy', icon: '🖨', desc: 'Physically scanned document' },
-        { value: 'phone_photo', label: 'Phone Photo', icon: '📷', desc: 'Photo taken with phone camera' },
-        { value: 'downloaded', label: 'Downloaded File', icon: '⬇️', desc: 'File sent via WhatsApp/email' },
-      ].map(dt => (
-        <button
-          key={dt.value}
-          onClick={() => setDocType(dt.value)}
-          className={`p-3 rounded-xl border-2 text-left transition-all ${
-            docType === dt.value
-              ? 'border-blue-500 bg-blue-500/10'
-              : 'border-gray-700 bg-gray-900 hover:border-gray-600'
-          }`}
-        >
-          <div className="text-2xl mb-1">{dt.icon}</div>
-          <div className="text-white text-sm font-medium">{dt.label}</div>
-          <div className="text-gray-500 text-xs mt-1">{dt.desc}</div>
-        </button>
-      ))}
-    </div>
-  </div>
-)}
-        {/* Mode Toggle */}
+
+        {/* Document Type Selector */}
         {!result && (
-          <div className="flex gap-3 mb-6">
-            <button
-              onClick={() => { setMode('upload'); stopCamera(); setFile(null); setCapturedImage(null); }}
-              className={`flex-1 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2
-                ${mode === 'upload' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              Upload Document
-            </button>
-            <button
-              onClick={() => { setMode('camera'); setFile(null); setCapturedImage(null); }}
-              className={`flex-1 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2
-                ${mode === 'camera' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Use Camera
-            </button>
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Document Type
+            </label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { value: 'official_pdf', label: 'Official PDF', icon: '📄', desc: 'Downloaded PDF document' },
+                { value: 'scanned', label: 'Scanned Copy', icon: '🖨', desc: 'Physically scanned document' },
+                { value: 'phone_photo', label: 'Phone Photo', icon: '📷', desc: 'Photo taken with phone camera' },
+                { value: 'downloaded', label: 'Downloaded File', icon: '⬇️', desc: 'File sent via WhatsApp/email' },
+              ].map(dt => (
+                <button
+                  key={dt.value}
+                  onClick={() => setDocType(dt.value)}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${
+                    docType === dt.value
+                      ? 'border-blue-500 bg-blue-500/10'
+                      : 'border-gray-700 bg-gray-900 hover:border-gray-600'
+                  }`}
+                >
+                  <div className="text-2xl mb-1">{dt.icon}</div>
+                  <div className="text-white text-sm font-medium">{dt.label}</div>
+                  <div className="text-gray-500 text-xs mt-1">{dt.desc}</div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Upload Mode */}
-        {mode === 'upload' && !result && (
+        {/* Upload Area */}
+        {!result && (
           <>
             <div
               {...getRootProps()}
@@ -268,79 +174,20 @@ export default function ScanPage() {
                   </p>
                   <p className="text-gray-400 text-sm mt-2">or click to browse files</p>
                   <p className="text-gray-600 text-xs mt-4">Supports PDF, JPG, PNG, DOCX</p>
-<p className="text-gray-600 text-xs mt-1">Please upload document images only (certificates, transcripts, ID cards)</p>
+                  <p className="text-gray-600 text-xs mt-1">Please upload document images only (certificates, transcripts, ID cards)</p>
                 </div>
               )}
             </div>
           </>
         )}
 
-        {/* Camera Mode */}
-        {mode === 'camera' && !result && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
-            {capturedImage ? (
-              <div className="text-center">
-                <img src={capturedImage} alt="Captured" className="max-h-64 mx-auto rounded-lg mb-4" />
-                <p className="text-green-400 font-medium mb-3">Photo captured successfully!</p>
-                <button
-                  onClick={() => { setCapturedImage(null); setFile(null); startCamera(); }}
-                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm"
-                >
-                  Retake Photo
-                </button>
-              </div>
-            ) : cameraActive ? (
-              <div className="text-center">
-                <video
-  ref={videoRef}
-  autoPlay
-  playsInline
-  muted
-  className="w-full max-h-64 object-cover rounded-lg mb-4"
-/>
-                <div className="flex gap-3 justify-center">
-                  <button
-                    onClick={capturePhoto}
-                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
-                  >
-                    📷 Capture
-                  </button>
-                  <button
-                    onClick={stopCamera}
-                    className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  </svg>
-                </div>
-                <p className="text-white font-medium mb-2">Take a photo of your document</p>
-                <p className="text-gray-400 text-sm mb-4">Position the document clearly in frame</p>
-                <button
-                  onClick={startCamera}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
-                >
-                  Open Camera
-                </button>
-              </div>
-            )}
-            <canvas ref={canvasRef} className="hidden" />
-          </div>
-        )}
-
         {/* Scan Button */}
         {file && !result && (
           <button
-    onClick={handleScan}
-    disabled={scanning}
-    className="w-full py-4 bg-blue-600 active:bg-blue-800 hover:bg-blue-700 disabled:bg-blue-800 text-white font-bold text-lg rounded-xl transition-colors touch-manipulation"
->
+            onClick={handleScan}
+            disabled={scanning}
+            className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-bold text-lg rounded-xl transition-colors"
+          >
             {scanning ? (
               <span className="flex items-center justify-center gap-3">
                 <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
@@ -392,7 +239,7 @@ export default function ScanPage() {
 
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className={`w-2 h-2 rounded-full ${result.layer3_hash?.suspicion_flag ? 'bg-red-400' : 'bg-green-400'}`} />
+                  <div className={`w-2 h-2 rounded-full ${result.layer3_hash?.match_status === 'MATCH' ? 'bg-green-400' : 'bg-red-400'}`} />
                   <h3 className="text-white font-semibold text-sm">Layer 3 — Hash</h3>
                 </div>
                 <p className="text-gray-400 text-xs">Status: {result.layer3_hash?.match_status}</p>
